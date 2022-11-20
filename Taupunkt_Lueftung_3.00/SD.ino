@@ -15,7 +15,7 @@
 #if IS_LOGGING_ENABLED
 
 #define LOG_FILE_NAME     F("fan.csv")
-#define LOG_INTERVAL_MIN  10
+#define LOG_INTERVAL_MIN  2 //default 10
 #define CSV_HEADER        F("Date/Time;Temperature T_I;Humidity H_I;Dew point DP_I;Temperature T_O;Humidity H_O;Dew point DP_O;Fan state;Fan time;Reboot;")
 
 
@@ -161,7 +161,7 @@ void logValuesToSD(const MeasurePoint &mp_, bool isRelaisOn_, bool hasStateChang
 		if (shouldBeLogged() == false)
 		{
 			#if IS_USB_DEBUG_ENABLED
-				Serial.print(F("no log"));
+				Serial.println(F("no log"));
 			#endif
 			return;
 		}

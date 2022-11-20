@@ -33,12 +33,16 @@ float calculateFanState(
 	*isStateOnHold_ = false;
 	if (*stateTimeSeconds_ < MIN_STATE_CHANGE_INTERVAL_MINUTES * 60)
 	{
+    // not so fast, I'm waiting for the interval of default 10mins... return deltaP before
 		*isStateOnHold_ = true;
 		return deltaDP;
 	}
 
+
+  // 10mins are over, reevaluate if the fan should be blowing
+  
 	#if IS_USB_DEBUG_ENABLED
-		Serial.println(F("onHold = false"));
+		Serial.println(F("onHold = false -> checking DP"));
 	#endif
 #endif // IS_RTC_ENABLED
 
@@ -50,9 +54,11 @@ float calculateFanState(
 
 	if (shouldFanBeOn == *isFanOn_)
 	{
+    //fan is already in correct state, change nothing
 		return deltaDP;
 	}
-
+ 
+ // change state of the fan
 	#if IS_USB_DEBUG_ENABLED
 		Serial.print(F("state change "));
 		Serial.print(*isFanOn_);

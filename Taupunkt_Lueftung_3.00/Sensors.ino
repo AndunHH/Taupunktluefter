@@ -9,13 +9,13 @@ void checkSensors()
 	handleErrorResult(
 		checkSensorValuesI(mp),
 		F("Sensor I"),
-		1,
+		0,
 		DHT_PIN_I
 	);
 	handleErrorResult(
 		checkSensorValuesO(mp),
 		F("Sensor O"),
-		2,
+		1,
 		DHT_PIN_O
 	);
 
@@ -56,7 +56,7 @@ static void handleErrorResult(
 		Serial.println(F(": ERROR"));
 	#endif
 
-	lcd.setCursor(0, lineNumber_ + 2);
+	lcd.setCursor(0, lineNumber_);
 	lcd.print(error_);
 
 	// Kind of reset on DHT on read error.
@@ -115,7 +115,7 @@ MeasurePoint makeMeasurement()
 	lcd.clear();
 	lcd.setCursor(0, 0);
 	lcd.print(F("Sensor error: "));
- lcd.setCursor(0, 1);
+  lcd.setCursor(0, 1);
 	lcd.print(error);
 
 	String msg(F(";;;;;;;;;Sensor error: "));
