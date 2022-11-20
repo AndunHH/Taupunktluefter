@@ -9,31 +9,26 @@
 // Ulrich Schmerold
 // 3/2022
 //////////////////////////////////////////////////////////////////////////////
+#include <TimeLib.h>
+#include <DS1307RTC.h>
 
 #if IS_RTC_ENABLED
-
-#define RTC_PIN_ENA 9
-#define RTC_PIN_CLK 7
-#define RTC_PIN_DAT 8
-
-Ds1302 rtc(RTC_PIN_ENA, RTC_PIN_CLK, RTC_PIN_DAT);
+static tmElements_t tm; //time element
 
 const char *createTimeStamp ()
 {
-	Ds1302::DateTime now;
+  RTC.read(tm);
 	static char timeStr[sizeof "YYYY-MM-DD hh:mm:ss"];
-
-	rtc.getDateTime(&now);
 
 	snprintf(
 		timeStr, sizeof timeStr,
 		"%04d-%02d-%02d %02d:%02d:%02d",
-		now.year + 2000,
-		now.month,
-		now.day,
-		now.hour,
-		now.minute,
-		now.second
+		tm.Year + 1970,
+		tm.Month,
+		tm.Day,
+		tm.Hour,
+		tm.Minute,
+		tm.Second
 	);
 
 	return timeStr;
@@ -42,40 +37,44 @@ const char *createTimeStamp ()
 
 void startRTC()
 {
-	rtc.init();
+	//rtc.init();
+  
+  if (RTC.read(tm)) {
 
-	lcd.clear();
-	lcd.setCursor(0, 0);
-	lcd.print(F("RTC initialized."));
+	  lcd.clear();
+	  lcd.setCursor(0, 0);
+	  lcd.print(F("RTC initialized."));
 
-	#if IS_USB_DEBUG_ENABLED
-		Serial.println(F("RTC OK"));
-	#endif
+	  #if IS_USB_DEBUG_ENABLED
+  		Serial.println(F("RTC OK"));
+  	#endif
+
+  } else {
+    if (RTC.chipPresent()) {
+      Serial.println("The DS1307 is stopped.  Please run the SetTime");
+      Serial.println("example to initialize the time and begin running.");
+      Serial.println();
+    } else {
+      Serial.println("DS1307 read error!  Please check the circuitry.");
+      Serial.println();
+    }
+  }
 
 	delay(1000);
-
-#if SET_TIME
-	rtc.setDateTime(&setTimeStruct);
-
-	lcd.clear();
-	lcd.setCursor(0, 0);
-	lcd.print(F("RTC time set."));
-	delay(1000);
-#endif
 
 	wdt_reset();
 	lcd.clear();
 }
 
 static uint8_t today = 0;
-static Ds1302::DateTime now;
+
 static bool _hasDayChanged = true;
 static bool _isFirstDaySinceStart = true;
 
 void getNow() {
-	rtc.getDateTime(&now);
+	RTC.read(tm);
 
-	_hasDayChanged = (today != now.day) ? true : false;
+	_hasDayChanged = (today != tm.Day) ? true : false;
 
 	// No day change, if it is not initialized.
 	if (_hasDayChanged && today != 0)
@@ -83,7 +82,7 @@ void getNow() {
 		_isFirstDaySinceStart = false;
 	}
 
-	today = now.day;
+	today = tm.Day;
 }
 
 bool hasDayChanged() {
@@ -91,11 +90,11 @@ bool hasDayChanged() {
 }
 
 unsigned int getMinutesOfDay() {
-	return now.hour * 60 + now.minute;
+	return tm.Hour * 60 + tm.Minute;
 }
 
 unsigned int getSecondsOfDay() {
-	return now.hour * 3600 + now.minute * 60 + now.second;
+	return tm.Hour * 3600 + tm.Minute * 60 + tm.Second;
 }
 
 bool isFirstDaySinceStart() {

@@ -114,7 +114,8 @@ MeasurePoint makeMeasurement()
 
 	lcd.clear();
 	lcd.setCursor(0, 0);
-	lcd.println(F("Sensor error: "));
+	lcd.print(F("Sensor error: "));
+ lcd.setCursor(0, 1);
 	lcd.print(error);
 
 	String msg(F(";;;;;;;;;Sensor error: "));

@@ -18,17 +18,19 @@
 // Libraries
 #include <DHT.h>
 #include <Wire.h>
-#include <LiquidCrystal_I2C.h>
+#include <hd44780.h>                       // main hd44780 header
+#include <hd44780ioClass/hd44780_I2Cexp.h> // i2c expander i/o class header
 #include <avr/wdt.h>
-#include <Ds1302.h>
+#include <TimeLib.h>
+#include <DS1307RTC.h>
 #include <SD.h>
 #include <SPI.h>
 
 
 // Config
 #define IS_RTC_ENABLED        1
-#define IS_LOGGING_ENABLED    1
-#define IS_USB_DEBUG_ENABLED  0
+#define IS_LOGGING_ENABLED    0
+#define IS_USB_DEBUG_ENABLED  1
 
 #if IS_LOGGING_ENABLBED && IS_RTC_ENABLED == 0
 # error "Logging is enabled, but RTC is disabled!"
@@ -40,9 +42,9 @@
 /* #define CORRECTION_T_O        0.2   // Korrekturwert Außensensor Temperatur */
 /* #define CORRECTION_H_O       -5.0   // Korrekturwert Außensensor Luftfeuchtigkeit */
 #define CORRECTION_T_I        0.3   // Korrekturwert Innensensor Temperatur
-#define CORRECTION_H_I       -11.7  // Korrekturwert Innensensor Luftfeuchtigkeit
+#define CORRECTION_H_I        0.7  // Korrekturwert Innensensor Luftfeuchtigkeit
 #define CORRECTION_T_O        0.2   // Korrekturwert Außensensor Temperatur
-#define CORRECTION_H_O        4.0   // Korrekturwert Außensensor Luftfeuchtigkeit
+#define CORRECTION_H_O        0.0   // Korrekturwert Außensensor Luftfeuchtigkeit
 
 #define SWITCH_OFF_LIMIT      2.0   // Minimaler Taupuntunterschied, bei dem das Relais ausschaltet.
 #define HYSTERESE             1.0   // Minimaler Unterschied + Hysterese ergibt den Einschaltpunkt.
@@ -56,24 +58,13 @@
 
 // Uncomment for time setting. ATTENTION: Also change struct below!
 /* #define SET_TIME 1 */
-#if SET_TIME && IS_RTC_ENABLED
-Ds1302::DateTime setTimeStruct = {
-	.year = 22,
-	.month = Ds1302::MONTH_MAY,
-	.day = 31,
-	.hour = 19,
-	.minute = 52,
-	.second = 0,
-	.dow = Ds1302::DOW_TUE,
-};
-#endif
 
 
 // Hardware Config (Config of RTC and SD is in corresponding ino-Files.
 #define FAN_ON  HIGH
 #define FAN_OFF LOW
 
-#define FAN_PIN 6
+#define FAN_PIN 2
 #define DHT_PIN_I  5
 #define DHT_PIN_O  4
 
@@ -84,7 +75,10 @@ DHT dhtI(DHT_PIN_I, DHTTYPE_I);
 DHT dhtA(DHT_PIN_O, DHTTYPE_O);
 
 
-LiquidCrystal_I2C lcd(0x27, 20, 4);
+hd44780_I2Cexp lcd; // declare lcd object: auto locate & auto config expander chip
+// LCD geometry
+const int LCD_COLS = 16;
+const int LCD_ROWS = 2;
 
 typedef struct {
 	float temperatureI;
@@ -97,10 +91,18 @@ typedef struct {
 
 static MeasurePoint measurePoints[RING_BUFFER_SIZE] = {};
 
+
 void setup()
 {
+  #if IS_USB_DEBUG_ENABLED
+    Serial.begin(9600);
+  #endif
+  
+  #if IS_USB_DEBUG_ENABLED
+    Serial.println(F("Start Setup"));
+  #endif
 	// Enable watchdog with 8s.
-	wdt_enable(WDTO_8S);
+	wdt_enable(WDT_PERIOD_8KCLK_gc);
 
 	// Configure fan pin as output.
 	pinMode(FAN_PIN, OUTPUT);
@@ -109,7 +111,15 @@ void setup()
 	digitalWrite(FAN_PIN, FAN_OFF);
 
 	// Init LCD.
-	lcd.init();
+  int status;
+  status = lcd.begin(LCD_COLS, LCD_ROWS);
+  if(status) // non zero status means it was unsuccesful
+  {
+    // hd44780 has a fatalError() routine that blinks an led if possible
+    // begin() failed so blink error code using the onboard LED if possible
+    hd44780::fatalError(status); // does not return
+  }
+	//lcd.init();
 	lcd.backlight();
 	lcd.clear();
 
@@ -119,18 +129,23 @@ void setup()
 	// Show software version
 	lcd.setCursor(0, 1);
 	lcd.print(Software_version);
+  #if IS_USB_DEBUG_ENABLED
+    Serial.println(F("SW Version shown"));
+  #endif
 	delay(1000);
 
 	// Init RTC.
 	startRTC();
-
+  #if IS_USB_DEBUG_ENABLED
+    Serial.println(F("RTC started"));
+  #endif
+  
 	// Check and show state of SD Card.
 	checkSD();
-
-	#if IS_USB_DEBUG_ENABLED
-		Serial.begin(9600);
-	#endif
-
+  #if IS_USB_DEBUG_ENABLED
+    Serial.println(F("SD checked"));
+  #endif
+ 
 	// Create special char °
 	byte Grad[8] = {
 		B00111,
@@ -156,10 +171,17 @@ void setup()
 		B00100
 	};
 	lcd.createChar(1, Strich);
+  #if IS_USB_DEBUG_ENABLED
+    Serial.println(F("chars created"));
+  #endif
 
 	// Start sensors
 	dhtI.begin();
 	dhtA.begin();
+
+   #if IS_USB_DEBUG_ENABLED
+    Serial.println(F("Sensors started"));
+  #endif
 
 	for(size_t i = 0; i < sizeof measurePoints / sizeof measurePoints[0]; i++)
 	{
@@ -176,6 +198,9 @@ void setup()
 
 void loop()
 {
+	  #if IS_USB_DEBUG_ENABLED
+    Serial.println(F("."));
+  #endif
 	static size_t measurePointCursor = 0;
 	static bool inited = false;
 	static String error("Init");
@@ -257,7 +282,7 @@ void displaySensorValues(const MeasurePoint &mp_)
 	lcd.write((uint8_t)1); // Special char |
 	lcd.print(mp_.humidityO);
 	lcd.print(F(" %"));
-
+/*
 	lcd.setCursor(0, 2);
 	lcd.print(F("DpI: "));
 	lcd.print(mp_.dewPointI);
@@ -269,7 +294,7 @@ void displaySensorValues(const MeasurePoint &mp_)
 	lcd.print(mp_.dewPointO);
 	lcd.write((uint8_t)0); // Special char °C
 	lcd.write(('C'));
-
+*/
 	delay(5000);    // Zeit um das Display zu lesen
 	wdt_reset();    // Watchdog zurücksetzen
 
@@ -296,7 +321,7 @@ void displayValuesPageAvg(const MeasurePoint measurePoint)
 	lcd.write((uint8_t)1); // Special char |
 	lcd.print(measurePoint.humidityO);
 	lcd.print(F(" %"));
-
+/*
 	lcd.setCursor(0, 2);
 	lcd.print(F("DpI: "));
 	lcd.print(measurePoint.dewPointI);
@@ -312,7 +337,7 @@ void displayValuesPageAvg(const MeasurePoint measurePoint)
 	lcd.setCursor(17, 3);
 	lcd.print(F("AVG"));
 
-
+*/
 	delay(5000);    // Zeit um das Display zu lesen
 	wdt_reset();    // Watchdog zurücksetzen
 }
